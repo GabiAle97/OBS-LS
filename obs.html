@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Comparación de runners — OBS</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --panel: rgba(10, 14, 20, .92);
+      --panel-soft: rgba(255, 255, 255, .045);
+      --line: rgba(255, 255, 255, .12);
+      --muted: #9aa7b8;
+      --text: #f4f7fb;
+      --accent: #70e1c1;
+      --ahead: #a6f2d9;
+      --warning: #ffc875;
+      --radius: 20px;
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body {
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      color: var(--text);
+      background: transparent;
+    }
+
+    .overlay {
+      width: min(100%, 1050px);
+      padding: 20px;
+    }
+
+    .card {
+      position: relative;
+      overflow: hidden;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: 0 18px 55px rgba(0, 0, 0, .32);
+      backdrop-filter: blur(14px);
+    }
+
+    .card::before {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 4px;
+      content: "";
+      background: linear-gradient(180deg, var(--accent), #4b9eff);
+    }
+
+    .topline, .heading, .runner-footer, .runner-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .topline { margin-bottom: 17px; }
+    .eyebrow {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+    .connection {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .connection i, .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--warning);
+      box-shadow: 0 0 12px currentColor;
+    }
+    .connection.is-connected i { background: var(--accent); }
+    .heading {
+      justify-content: center;
+      margin-bottom: 17px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-align: center;
+      text-transform: uppercase;
+    }
+    .heading::before, .heading::after {
+      height: 1px;
+      flex: 1;
+      content: "";
+      background: var(--line);
+    }
+
+    .runners { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .runner {
+      min-width: 0;
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel-soft);
+      transition: border-color .2s ease, background .2s ease;
+    }
+    .runner.is-ahead {
+      border-color: rgba(112, 225, 193, .65);
+      background: rgba(112, 225, 193, .09);
+    }
+    .runner-title { min-height: 22px; margin-bottom: 10px; }
+    .name { font-size: 16px; font-weight: 850; letter-spacing: .015em; }
+    .ahead-badge {
+      color: var(--ahead);
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .12em;
+      opacity: 0;
+    }
+    .is-ahead .ahead-badge { opacity: 1; }
+    .split {
+      overflow: hidden;
+      color: var(--text);
+      font-size: clamp(15px, 2vw, 20px);
+      font-weight: 750;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .runner-footer { margin-top: 12px; }
+    .phase {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 750;
+      text-transform: uppercase;
+    }
+    .phase.is-live { color: var(--accent); }
+    .phase.is-live::before {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      content: "";
+      background: currentColor;
+      box-shadow: 0 0 10px currentColor;
+    }
+    .time {
+      font-variant-numeric: tabular-nums;
+      font-size: clamp(22px, 3.2vw, 32px);
+      font-weight: 850;
+      letter-spacing: -.035em;
+    }
+    .comparison {
+      min-height: 18px;
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+    }
+    .comparison strong { color: var(--text); }
+    .comparison.is-tie { color: var(--accent); }
+
+    @media (max-width: 560px) {
+      .overlay { padding: 12px; }
+      .card { padding: 17px 15px; }
+      .runners { gap: 8px; }
+      .runner { padding: 13px 11px; }
+      .name { font-size: 14px; }
+      .runner-footer { align-items: flex-end; }
+      .phase { font-size: 9px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="overlay" aria-label="Comparación en vivo de runners">
+    <section class="card">
+      <div class="topline">
+        <span class="eyebrow">Basement World Cup 2026</span>
+        <span class="connection" id="connection"><i></i><span id="connection-label">Conectando</span></span>
+      </div>
+      <div class="heading">Comparativa de runners</div>
+      <div class="runners" id="runners"></div>
+      <div class="comparison" id="comparison" aria-live="polite">Esperando los dos feeds…</div>
+    </section>
+  </main>
+
+  <script>
+    // Se consultan los mismos feeds que la página principal.
+    const RUNNERS = {
+      MattGael: 'https://nathan-testament-addressed-promotes.trycloudflare.com/',
+      LanceLM: 'https://equations-undo-lover-objectives.trycloudflare.com/'
+    };
+    const POLL_INTERVAL_MS = 1000;
+    const STALE_AFTER_MS = 15000;
+    const runnerStates = new Map();
+    const pendingRequests = new Set();
+
+    const runnersElement = document.getElementById('runners');
+    const comparisonElement = document.getElementById('comparison');
+    const connectionElement = document.getElementById('connection');
+    const connectionLabel = document.getElementById('connection-label');
+
+    const cards = Object.keys(RUNNERS).map(name => `
+      <article class="runner" data-runner="${name}">
+        <div class="runner-title">
+          <span class="name">${name}</span>
+          <span class="ahead-badge">ADELANTE</span>
+        </div>
+        <div class="split" data-field="split">Esperando datos…</div>
+        <div class="runner-footer">
+          <span class="phase" data-field="phase">Conectando</span>
+          <strong class="time" data-field="time">—</strong>
+        </div>
+      </article>
+    `).join('');
+    runnersElement.innerHTML = cards;
+
+    function parseDuration(value) {
+      const match = String(value || '').trim().match(/^(\d+):(\d{2}):(\d{2})(?:\.(\d+))?$/);
+      if (!match) return null;
+      const fraction = Number(`0.${match[4] || '0'}`);
+      return ((Number(match[1]) * 60 + Number(match[2])) * 60 + Number(match[3]) + fraction) * 1000;
+    }
+
+    function formatDuration(milliseconds) {
+      const totalMs = Math.max(0, Math.floor(milliseconds));
+      const totalSeconds = Math.floor(totalMs / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      const centiseconds = Math.floor((totalMs % 1000) / 10);
+      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(centiseconds).padStart(2, '0')}`;
+    }
+
+    function getFreshState(name) {
+      const state = runnerStates.get(name);
+      if (!state) return null;
+      const referenceTime = state.timestampMs || state.receivedAt;
+      return Date.now() - referenceTime <= STALE_AFTER_MS ? state : null;
+    }
+
+    function render() {
+      const freshStates = new Map();
+      Object.keys(RUNNERS).forEach(name => {
+        const state = getFreshState(name);
+        const card = runnersElement.querySelector(`[data-runner="${name}"]`);
+        const split = card.querySelector('[data-field="split"]');
+        const phase = card.querySelector('[data-field="phase"]');
+        const time = card.querySelector('[data-field="time"]');
+        card.classList.remove('is-ahead');
+
+        if (!state) {
+          split.textContent = 'Feed no disponible';
+          phase.textContent = 'Sin conexión';
+          phase.classList.remove('is-live');
+          time.textContent = '—';
+          return;
+        }
+
+        freshStates.set(name, state);
+        split.textContent = state.split || '—';
+        const isRunning = /running/i.test(state.phase);
+        phase.textContent = isRunning
+          ? 'EN VIVO'
+          : (/finish|complete|ended/i.test(state.phase) ? 'RUN FINALIZADA' : (state.phase || '—'));
+        phase.classList.toggle('is-live', isRunning);
+        time.textContent = state.timeMs == null ? '—' : formatDuration(state.timeMs);
+      });
+
+      const connectedCount = freshStates.size;
+      connectionElement.classList.toggle('is-connected', connectedCount === Object.keys(RUNNERS).length);
+      connectionLabel.textContent = connectedCount === 2 ? 'Feeds conectados' : `${connectedCount}/2 feeds`;
+
+      const [runnerA, runnerB] = Object.keys(RUNNERS);
+      const stateA = freshStates.get(runnerA);
+      const stateB = freshStates.get(runnerB);
+      comparisonElement.classList.remove('is-tie');
+      if (!stateA || !stateB) {
+        comparisonElement.textContent = 'Esperando los dos feeds…';
+        return;
+      }
+
+      const comparableIndices = Number.isFinite(stateA.splitIndex) && Number.isFinite(stateB.splitIndex);
+      const gapMs = stateA.lastSplitTimeMs != null && stateB.lastSplitTimeMs != null
+        ? Math.abs(stateA.lastSplitTimeMs - stateB.lastSplitTimeMs)
+        : null;
+      let leader = null;
+      if (comparableIndices && stateA.splitIndex !== stateB.splitIndex) {
+        leader = stateA.splitIndex > stateB.splitIndex ? runnerA : runnerB;
+      } else if (gapMs > 0) {
+        leader = stateA.lastSplitTimeMs < stateB.lastSplitTimeMs ? runnerA : runnerB;
+      }
+
+      if (!leader) {
+        comparisonElement.textContent = 'Van parejos';
+        comparisonElement.classList.add('is-tie');
+        return;
+      }
+
+      const trailingRunner = leader === runnerA ? runnerB : runnerA;
+      const leaderCard = runnersElement.querySelector(`[data-runner="${leader}"]`);
+      leaderCard.classList.add('is-ahead');
+      comparisonElement.innerHTML = `<strong>${leader}</strong> va adelante${gapMs != null ? ` · ${formatDuration(gapMs)} de diferencia` : ''}`;
+      const trailingTime = runnersElement.querySelector(`[data-runner="${trailingRunner}"] [data-field="time"]`);
+      if (gapMs != null) trailingTime.textContent = `+${formatDuration(gapMs)}`;
+    }
+
+    async function poll() {
+      const requests = Object.entries(RUNNERS).map(async ([name, url]) => {
+        if (pendingRequests.has(name)) return;
+        pendingRequests.add(name);
+        try {
+          const response = await fetch(url, { cache: 'no-store' });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json();
+          const timestamp = Number(data?.timestamp);
+          runnerStates.set(name, {
+            split: String(data?.split || '').trim(),
+            splitIndex: Number.isFinite(Number(data?.splitIndex)) ? Number(data.splitIndex) : null,
+            phase: String(data?.phase || '').trim(),
+            timeMs: parseDuration(data?.time),
+            lastSplitTimeMs: parseDuration(data?.lastSplitTime),
+            timestampMs: Number.isFinite(timestamp) ? (timestamp > 1e12 ? timestamp : timestamp * 1000) : 0,
+            receivedAt: Date.now()
+          });
+        } catch (error) {
+          // El estado previo se conserva hasta superar el límite de datos obsoletos.
+          console.warn(`No se pudo consultar el feed de ${name}.`, error);
+        } finally {
+          pendingRequests.delete(name);
+        }
+      });
+      await Promise.all(requests);
+      render();
+    }
+
+    poll();
+    setInterval(poll, POLL_INTERVAL_MS);
+  </script>
+</body>
+</html>
