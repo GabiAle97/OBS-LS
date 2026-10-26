@@ -203,6 +203,7 @@
     const STALE_AFTER_MS = 15000;
     const runnerStates = new Map();
     const pendingRequests = new Set();
+    const splitHistories = new Map(Object.keys(RUNNERS).map(name => [name, new Map()]));
 
     const runnersElement = document.getElementById('runners');
     const comparisonElement = document.getElementById('comparison');
@@ -289,26 +290,39 @@
       }
 
       const comparableIndices = Number.isFinite(stateA.splitIndex) && Number.isFinite(stateB.splitIndex);
-      const gapMs = stateA.lastSplitTimeMs != null && stateB.lastSplitTimeMs != null
-        ? Math.abs(stateA.lastSplitTimeMs - stateB.lastSplitTimeMs)
-        : null;
+      const historyA = splitHistories.get(runnerA);
+      const historyB = splitHistories.get(runnerB);
+      const commonSplits = [...historyA.keys()]
+        .filter(index => historyB.has(index))
+        .sort((a, b) => b - a);
+      const comparisonSplit = commonSplits[0];
+      const splitTimeA = comparisonSplit == null ? null : historyA.get(comparisonSplit);
+      const splitTimeB = comparisonSplit == null ? null : historyB.get(comparisonSplit);
+      const gapMs = splitTimeA == null || splitTimeB == null
+        ? null
+        : Math.abs(splitTimeA - splitTimeB);
       let leader = null;
       if (comparableIndices && stateA.splitIndex !== stateB.splitIndex) {
         leader = stateA.splitIndex > stateB.splitIndex ? runnerA : runnerB;
       } else if (gapMs > 0) {
-        leader = stateA.lastSplitTimeMs < stateB.lastSplitTimeMs ? runnerA : runnerB;
+        leader = splitTimeA < splitTimeB ? runnerA : runnerB;
       }
 
       if (!leader) {
-        comparisonElement.textContent = 'Van parejos';
-        comparisonElement.classList.add('is-tie');
+        comparisonElement.textContent = comparableIndices && stateA.splitIndex === stateB.splitIndex
+          ? (gapMs === 0 ? 'Van parejos en el último split común' : 'Esperando un split común para comparar tiempos…')
+          : 'Esperando datos de splits…';
+        if (gapMs === 0) comparisonElement.classList.add('is-tie');
         return;
       }
 
       const trailingRunner = leader === runnerA ? runnerB : runnerA;
       const leaderCard = runnersElement.querySelector(`[data-runner="${leader}"]`);
       leaderCard.classList.add('is-ahead');
-      comparisonElement.innerHTML = `<strong>${leader}</strong> va adelante${gapMs != null ? ` · ${formatDuration(gapMs)} de diferencia` : ''}`;
+      const splitDetail = gapMs == null
+        ? ''
+        : ` · ${formatDuration(gapMs)} en split ${comparisonSplit}`;
+      comparisonElement.innerHTML = `<strong>${leader}</strong> va adelante${splitDetail}`;
       const trailingTime = runnersElement.querySelector(`[data-runner="${trailingRunner}"] [data-field="time"]`);
       if (gapMs != null) trailingTime.textContent = `+${formatDuration(gapMs)}`;
     }
@@ -322,12 +336,21 @@
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const data = await response.json();
           const timestamp = Number(data?.timestamp);
+          const splitIndex = data?.splitIndex == null ? null : Number(data.splitIndex);
+          const lastSplitTimeMs = parseDuration(data?.lastSplitTime);
+          const previousState = runnerStates.get(name);
+          if (Number.isFinite(splitIndex) && lastSplitTimeMs != null
+            && (!previousState
+              || previousState.lastSplitTimeMs !== lastSplitTimeMs
+              || previousState.splitIndex === splitIndex)) {
+            splitHistories.get(name).set(splitIndex, lastSplitTimeMs);
+          }
           runnerStates.set(name, {
             split: String(data?.split || '').trim(),
-            splitIndex: Number.isFinite(Number(data?.splitIndex)) ? Number(data.splitIndex) : null,
+            splitIndex: Number.isFinite(splitIndex) ? splitIndex : null,
             phase: String(data?.phase || '').trim(),
             timeMs: parseDuration(data?.time),
-            lastSplitTimeMs: parseDuration(data?.lastSplitTime),
+            lastSplitTimeMs,
             timestampMs: Number.isFinite(timestamp) ? (timestamp > 1e12 ? timestamp : timestamp * 1000) : 0,
             receivedAt: Date.now()
           });
